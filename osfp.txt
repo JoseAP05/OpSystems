@@ -1,0 +1,540 @@
+#include <stdio.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <string.h>
+#include <errno.h>
+
+//Boards and hidden matrixes with the real positions defined
+#define ARR_LEN 11
+
+
+pid_t player;
+pthread_t turn_p1, turn_p2;
+
+//row and column global variables
+int row, col;
+//setted boats counters
+int set_counter = 1;
+int set_counter_2 = 1;
+//turn global variable (if 1 = turn 1, if 2 = turn 2)
+int turn = 1;
+//destroyed boat counters
+int destroy_counter_1 = 0;
+int destroy_counter_2 = 0;
+//File errors
+void errores(int fd);
+//Winner file
+int snk(void);
+
+
+//hidden matrixes for player'ss private board
+char Hidden_Matrix_1[ARR_LEN][ARR_LEN] ={{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '1'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'2', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'3', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'4', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'5', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'6', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'7', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'8', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'9', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'}};
+                                         
+char Hidden_Matrix_2[ARR_LEN][ARR_LEN] ={{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '1'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'2', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'3', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'4', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'5', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'6', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'7', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'8', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'9', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'}};
+
+//board matrixes for player's attaks on enemy boat lineup
+char Board_Matrix_1[ARR_LEN][ARR_LEN] = {{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '1'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'2', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'3', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'4', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'5', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'6', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'7', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'8', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'9', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'}};
+                                         
+char Board_Matrix_2[ARR_LEN][ARR_LEN] = {{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '1'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'2', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'3', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'4', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'5', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'6', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'7', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'8', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'9', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'},
+                                         {'1', '-', '-', '-', '-', '-', '-', '-', '-', '-', '-'}};
+
+
+void handler1(int sig)
+{
+	pthread_cancel(turn_p1);
+}
+
+void handler2(int sig)
+{
+	pthread_cancel(turn_p2);
+}
+
+
+void print_Hidd_Mat_1(void){
+	int i, j;
+	
+	for(i = 0; i < ARR_LEN; i++){
+		for(j = 0; j < ARR_LEN; j++){
+			printf("%c ", Hidden_Matrix_1[i][j]);
+		}
+		printf("\n");
+	}
+}
+
+void print_Hidd_Mat_2(void){
+	int i, j;
+	
+	for(i = 0; i < ARR_LEN; i++){
+		for(j = 0; j < ARR_LEN; j++){
+			printf("%c ", Hidden_Matrix_2[i][j]);
+		}
+		printf("\n");
+	}
+}
+
+void print_Board_Mat_1(void){
+	int i, j;
+	
+	for(i = 0; i < ARR_LEN; i++){
+		for(j = 0; j < ARR_LEN; j++){
+			printf("%c ", Board_Matrix_1[i][j]);
+		}
+		printf("\n");
+	}
+}
+
+void print_Board_Mat_2(void){
+	int i, j;
+	
+	for(i = 0; i < ARR_LEN; i++){
+		for(j = 0; j < ARR_LEN; j++){
+			printf("%c ", Board_Matrix_2[i][j]);
+		}
+		printf("\n");
+	}
+}
+
+//set functions for setting each player's boat lineup 
+void set_player_1(void){
+	while(set_counter > 0){
+		printf("Tu tablero actualmente: \n");
+		printf("\n");
+		print_Hidd_Mat_1();
+		printf("\n");
+		printf("Te falta acomodar %d barcos \n", set_counter);
+		printf("Introduce el numero de renglon en el que quieres poner el barco \n");
+		printf("Usa numeros del 1 al 10 \n");
+		scanf("%d", &row);
+		if(row < 1 || row > 10){
+			printf("Renglon invalido, porfavor intenta de nuevo \n");
+			printf("Regresando al programa en 5 segundos \n");
+			sleep(5);
+			continue;
+		}
+		printf("Introduce el numero de columna en el que quieres poner el barco \n");
+		scanf("%d", &col);
+		if(col < 1 || col > 10){
+			printf("Columna invalida, porfavor intenta de nuevo \n");
+			printf("Regresando al programa en 5 segundos \n");
+			sleep(5);
+			continue;
+		}
+		if(Hidden_Matrix_1[row][col] == 'B'){
+			printf("Espacio en tablero usado previamente, porfavor introduce otro espacio \n");
+			printf("Regresando al programa en 5 segundos \n");
+			sleep(5);
+			continue;
+		}
+		Hidden_Matrix_1[row][col] = 'B';
+		set_counter = set_counter-1;
+	}
+}
+
+void set_player_2(void){
+	while(set_counter_2 > 0){
+		printf("Tu tablero actualmente: \n");
+		printf("\n");
+		print_Hidd_Mat_2();
+		printf("\n");
+		printf("Te falta acomodar %d barcos \n", set_counter_2);
+		printf("Introduce el numero de renglon en el que quieres poner el barco \n");
+		printf("Usa numeros del 1 al 10 \n");
+		scanf("%d", &row);
+		if(row < 1 || row > 10){
+			printf("Renglon invalido, porfavor intenta de nuevo \n");
+			printf("Regresando al programa en 5 segundos \n");
+			sleep(5);
+			continue;
+		}
+		printf("Introduce el numero de columna en el que quieres poner el barco \n");
+		scanf("%d", &col);
+		if(col < 1 || col > 10){
+			printf("Columna invalida, porfavor intenta de nuevo \n");
+			printf("Regresando al programa en 5 segundos \n");
+			sleep(5);
+			continue;
+		}
+		if(Hidden_Matrix_2[row][col] == 'B'){
+			printf("Espacio en tablero usado previamente, porfavor introduce otro espacio \n");
+			printf("Regresando al programa en 5 segundos \n");
+			sleep(5);
+			continue;
+		}
+		Hidden_Matrix_2[row][col] = 'B';
+		set_counter_2 = set_counter_2-1;
+		
+	}
+}
+
+//thread handlers for players turns
+void* p1_th(void *args)
+{	
+	while(1){
+		if(destroy_counter_1 == 10){
+				pthread_exit(NULL);
+			}
+		if(turn == 1){
+			printf("Turno de jugador 1 \n");
+			printf("\n");
+			printf("Tu tablero \n");
+			print_Hidd_Mat_1();
+			printf("\n");
+			printf("B = Posicion de tus barcos \n");
+			printf("D = Barco aliado destruido \n");
+			printf("0 = Ataque enemigo fallido \n");
+			printf("\n");
+			printf("Tablero de tu enemigo \n");
+			print_Board_Mat_2();
+			printf("\n");
+			printf("X = Barco enemigo destruido \n");
+			printf("0 = Ataque aliado fallido \n");
+			printf("\n");
+			
+			printf("Introduce el renglon del espacio que quieres atacar \n");
+			printf("Usa numeros del 1 al 10 \n");
+			scanf("%d", &row);
+			if(row < 1 || row > 10){
+				printf("Renglon invalido, porfavor intenta de nuevo \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			printf("Introduce la columna del espacio que quieres atacar \n");
+			scanf("%d", &col);
+			if(col < 1 || col > 10){
+				printf("Columna invalida, porfavor intenta de nuevo \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			if(Board_Matrix_2[row][col] == 'X'){
+				printf("Barco en ese espacio ya destruido, porfavor introduce otro espacio \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			if(Board_Matrix_2[row][col] == '0'){
+				printf("Espacio vacio ya atacado, intenta otro \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			
+			if(Hidden_Matrix_2[row][col] == 'B'){
+				system("clear");
+				printf("HIT \n");
+				printf("Barco destruido! \n");
+				Hidden_Matrix_2[row][col] = 'D';
+				Board_Matrix_2[row][col] = 'X';
+				destroy_counter_2 = destroy_counter_2+1;
+				if(destroy_counter_2 == 1){
+					printf("JUGADOR 1 GANA\n");
+					printf("FELICIDADES\n");
+					snk();
+					txt();
+					pthread_exit(NULL);
+				} else {
+					printf("Pasando a turno de jugador 2 en 5 segundos \n");
+					sleep(5);
+					turn = 2;
+				}
+			}
+			
+			if(Hidden_Matrix_2[row][col] == '-'){
+				system("clear");
+				printf("MISS  \n");
+				printf("Espacio vacio!  \n");
+				printf("Pasando a turno de jugador 2 en 5 segundos \n");
+				sleep(5);
+				system("clear");
+				Board_Matrix_2[row][col] = '0';
+				Hidden_Matrix_2[row][col] = '0';
+				turn = 2;
+			}
+		}
+	}
+	pthread_exit(NULL);
+}
+
+void* p2_th(void *args)
+{	
+	while(1){
+		if(destroy_counter_2 == 10){
+				pthread_exit(NULL);
+			}
+		if(turn == 2){
+			printf("Turno de jugador 2 \n");
+			printf("\n");
+			printf("Tu tablero \n");
+			print_Hidd_Mat_2();
+			printf("\n");
+			printf("B = Posicion de tus barcos \n");
+			printf("D = Barco aliado destruido \n");
+			printf("0 = Ataque enemigo fallido \n");
+			printf("\n");
+			printf("Tablero de tu enemigo \n");
+			print_Board_Mat_1();
+			printf("\n");
+			printf("X = Barco enemigo destruido \n");
+			printf("0 = Ataque aliado fallido \n");
+			printf("\n");
+			
+			printf("Introduce el renglon del espacio que quieres atacar \n");
+			printf("Usa numeros del 1 al 10 \n");
+			scanf("%d", &row);
+			if(row < 1 || row > 10){
+				printf("Renglon invalido, porfavor intenta de nuevo \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			printf("Introduce la columna del espacio que quieres atacar \n");
+			scanf("%d", &col);
+			
+			if(col < 1 || col > 10){
+				printf("Columna invalida, porfavor intenta de nuevo \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			if(Board_Matrix_1[row][col] == 'X'){
+				printf("Barco en ese espacio ya destruido, porfavor introduce otro espacio \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			if(Board_Matrix_1[row][col] == '0'){
+				printf("Espacio vacio ya atacado, intenta otro \n");
+				printf("Regresando al programa en 5 segundos \n");
+				sleep(5);
+				continue;
+			}
+			
+			if(Hidden_Matrix_1[row][col] == 'B'){
+				system("clear");
+				printf("HIT \n");
+				printf("Barco destruido! \n");
+				Hidden_Matrix_1[row][col] = 'D';
+				Board_Matrix_1[row][col] = 'X';
+				destroy_counter_1 = destroy_counter_1+1;
+				if(destroy_counter_1 == 1){
+					system("clear");
+					printf("JUGADOR 2 GANA\n");
+					printf("FELICIDADES\n");
+					snk();
+					txt();
+					pthread_exit(NULL);
+				} else {
+					printf("Pasando a turno de jugador 1 en 5 segundos \n");
+					sleep(5);
+					system("clear");
+					turn = 1;
+				}
+			}
+			
+			if(Hidden_Matrix_2[row][col] == '-'){
+				system("clear");
+				printf("MISS  \n");
+				printf("Espacio vacio!  \n");
+				printf("Pasando a turno de jugador 1 en 5 segundos \n");
+				sleep(5);
+				system("clear");
+				Board_Matrix_1[row][col] = '0';
+				Hidden_Matrix_1[row][col] = '0';
+				turn = 1;
+			}
+		}
+	}
+	pthread_exit(NULL);
+}
+
+int main() {
+     	int state, status;
+     
+     	
+	printf("Set de los barcos \n");
+	printf("Jugador 1 toma la computadora y presiona alguna tecla para continuar\n");
+	getchar();//Press any key to start!
+	set_player_1();
+	//Clearing screens
+	system("clear");
+	printf("Jugador 2 toma la computadora y espera 5 segundos \n");
+	sleep(5);
+	system("clear");
+	printf("Set de los barcos \n");
+	set_player_2();//Ready player two!
+	system("clear");
+	printf("Empezando juego en 5 segundos, jugador 1 toma el control. \n");
+	sleep(5);
+	
+	state = pthread_create(&turn_p1, NULL, p1_th, NULL);
+	if(state != 0){
+		perror("Error al crear el hilo 1\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	state = pthread_create(&turn_p2, NULL, p2_th, NULL);
+	if(state != 0){
+		perror("Error al crear el hilo2\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	
+	player = fork();
+	
+	if(player == -1){
+		perror("Error al crear proceso hijo");
+		exit(EXIT_FAILURE);
+	}
+	
+	if(player == 0)
+	{
+		
+		signal(SIGUSR2, handler1);
+		
+		
+		while (1){
+			pause();
+			
+			kill(getppid(), SIGUSR1);
+		}
+		
+		pthread_cancel(turn_p2);
+	
+	}
+	else{
+		signal(SIGUSR1, handler2);
+		
+		
+		while (1){
+			kill(player, SIGUSR2);
+			
+			pause();
+		}
+		
+		pthread_cancel(turn_p1);
+		
+	}
+	
+	 
+	printf("WINRAR!");
+	
+	return 0;
+}
+//Funcion que guarda el ID del ganador en un archivo txt
+int snk(void){
+	int fd, n;
+	int id[6];
+	printf("\nEnter 6 chars as id:\n");
+	for(n=0; n<6; n++){
+		printf("\nEnter digit %d\n", n+1);
+		scanf(" %d", &id[n]);
+	}
+	fd = creat("score.txt", 777);
+	int elementos = sizeof(id) / sizeof(id[0]);
+	n = write(fd, id , elementos * sizeof(int));
+	errores(fd);
+	close(fd);
+	int fdx = open("score.txt", 300);
+	int num;
+	printf("\nYour ID is:");
+	while (read(fdx, &num, sizeof(int)) == sizeof(int)) {
+		printf("%d ", num);
+	}
+	printf("\n");
+	errores(fdx);
+	close(fdx);
+	sleep(1);
+	kill(getpid(),SIGINT);
+	return 0;
+}
+
+
+void txt(){
+    int i, j;
+    
+
+    int fd = creat("Tablero.txt", 0777);
+    if (fd < 0) {
+        perror("Error al crear el archivo");
+        return;
+    }
+
+    dup2(fd, STDOUT_FILENO);
+printf("                                                BATTESHIP \n ---------------------------------------------------------------------------------------------------------\n JUGADOR 1 \n");
+    for (i = 0; i < ARR_LEN; i++) {
+        for (j = 0; j < ARR_LEN; j++) {
+            printf("%c ", Hidden_Matrix_1[i][j]);
+        }
+        printf("\n");
+    }
+printf("\n\n JUGADOR 2 \n");
+for (i = 0; i < ARR_LEN; i++) {
+        for (j = 0; j < ARR_LEN; j++) {
+            printf("%c ", Hidden_Matrix_2[i][j]);
+            }
+           printf("\n");
+    }    
+    close(fd);
+    }
+    
+
+void errores(int filedes)
+{
+	if( filedes < 0 ) {
+		if (errno == EBADF )
+			printf("\nMal desciptor de archivo");
+		else if(errno == EACCES)
+			printf("\nProblema de permisos para accdear al archivo");
+		else if(errno == EAGAIN)
+			printf("\nArchivo bloqueado");
+		else
+			perror("\nError: ");
+	}
+}
+
